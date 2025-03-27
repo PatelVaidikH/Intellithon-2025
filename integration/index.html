@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Industrial Supplier Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-lg">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <span class="text-xl font-bold text-blue-600">Intellithon 2025</span>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button class="bg-blue-600 text-white px-4 py-2 rounded-md">AI Bots</button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <!-- Search Section -->
+            <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+                <h2 class="text-2xl font-bold mb-4">Find Industrial Suppliers</h2>
+                <div class="flex flex-col md:flex-row gap-4">
+                    <input type="text" id="searchInput" placeholder="Search suppliers, products, or industries..." 
+                           class="flex-grow p-3 border rounded-md">
+                    <input type="hidden" id="industryFilter" class="p-3 border rounded-md">
+                    <button onclick="searchSuppliers()" class="bg-blue-600 text-white px-6 py-3 rounded-md">
+                        Search
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading Indicator -->
+            <div id="loadingIndicator" class="hidden text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-600"></div>
+                <p class="mt-2 text-gray-600">Searching suppliers...</p>
+            </div>
+
+            <!-- Detected Filters -->
+            <div id="detectedFilters" class="hidden bg-blue-50 p-4 rounded-lg mb-6">
+                <h3 class="font-medium text-blue-800 mb-2">Detected search filters:</h3>
+                <div id="filtersList" class="flex flex-wrap gap-2"></div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="resultsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api/search';
+        
+        // Fallback data in case the API is not available
+        const fallbackSuppliers = [
+        ];
+
+        async function searchSuppliers() {
+            const searchQuery = document.getElementById('searchInput').value;
+            const industryFilter = document.getElementById('industryFilter').value;
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const detectedFilters = document.getElementById('detectedFilters');
+            const filtersList = document.getElementById('filtersList');
+            
+            // Show loading indicator
+            loadingIndicator.classList.remove('hidden');
+            detectedFilters.classList.add('hidden');
+            
+            try {
+                // Call the backend API
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        searchQuery: searchQuery,
+                        industryFilter: industryFilter
+                    }),
+                });
+                
+                if (!response.ok) {
+                    throw new Error('API request failed');
+                }
+                
+                const data = await response.json();
+                
+                // Display detected filters
+                filtersList.innerHTML = '';
+                let hasFilters = false;
+                
+                if (data.criteria.location) {
+                    filtersList.innerHTML += `
+                        <span class="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded">
+                            Location: ${data.criteria.location}
+                        </span>
+                    `;
+                    hasFilters = true;
+                }
+                
+                if (data.criteria.capabilities) {
+                    filtersList.innerHTML += `
+                        <span class="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded">
+                            Capability: ${data.criteria.capabilities}
+                        </span>
+                    `;
+                    hasFilters = true;
+                }
+                
+                if (industryFilter) {
+                    filtersList.innerHTML += `
+                        <span class="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded">
+                            Industry: ${document.getElementById('industryFilter').options[document.getElementById('industryFilter').selectedIndex].text}
+                        </span>
+                    `;
+                    hasFilters = true;
+                }
+                
+                if (hasFilters) {
+                    detectedFilters.classList.remove('hidden');
+                }
+                
+                // Display the results
+                displayResults(data.results);
+                
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                
+                // Fallback to local data if API fails
+                alert('Could not connect to search API. Showing sample data instead.');
+                
+                // Filter local data
+                const searchTerm = searchQuery.toLowerCase();
+                const filteredSuppliers = fallbackSuppliers.filter(supplier => {
+                    const matchesSearch = supplier.service_name.toLowerCase().includes(searchTerm) ||
+                                        supplier.service_location.toLowerCase().includes(searchTerm) ||
+                                        supplier.service_capabilities.toLowerCase().includes(searchTerm);
+                    const matchesIndustry = !industryFilter || supplier.post_tags.includes(industryFilter);
+                    return matchesSearch && matchesIndustry;
+                });
+                
+                displayResults(filteredSuppliers);
+            } finally {
+                // Hide loading indicator
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+
+        function displayResults(results) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+
+            if (results.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-8">
+                        <p class="text-gray-500">No suppliers found matching your criteria.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            results.forEach(supplier => {
+                // Extract tags from post_tags field
+                const tagsArray = supplier.post_tags ? supplier.post_tags.split(',').map(tag => tag.trim()) : [];
+                const tagsHTML = tagsArray.map(tag => 
+                    `<span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">${tag}</span>`
+                ).join('');
+                
+                // Extract certifications (ISO mentions from description)
+                const isoRegex = /ISO\s+\d+/g;
+                const certifications = [];
+                let match;
+                
+                if (supplier.service_description) {
+                    while ((match = isoRegex.exec(supplier.service_description)) !== null) {
+                        certifications.push(match[0]);
+                    }
+                }
+                
+                if (certifications.length === 0) {
+                    // Add some default certifications if none found
+                    certifications.push("ISO 9001");
+                }
+                
+                const card = `
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <div class="flex justify-between items-start mb-4">
+                            <h3 class="text-xl font-semibold">${supplier.service_name}</h3>
+                            <span class="bg-blue-100 text-blue-800 text-sm px-2 py-1 rounded">
+                                ${supplier.service_rating ? supplier.service_rating : '4.0'} ⭐
+                            </span>
+                        </div>
+                        <p class="text-gray-600 mb-2">
+                            <i class="bi bi-geo-alt"></i> ${supplier.service_location}
+                        </p>
+                        <p class="text-gray-600 mb-3">
+                            <i class="bi bi-gear"></i> ${supplier.service_capabilities || 'General Manufacturing'}
+                        </p>
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-500">Certifications:</p>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                                ${certifications.map(cert => 
+                                    `<span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">${cert}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                        <div class="mb-4">
+                            <p class="text-sm text-gray-500">Industry Tags:</p>
+                            <div class="flex flex-wrap gap-2 mt-1">
+                                ${tagsHTML || '<span class="bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">General</span>'}
+                            </div>
+                        </div>
+                        <div class="border-t pt-4">
+
+                            <a href="${supplier.details_url || '#'}" class="block mt-4 text-center bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition">
+                                View Details
+                            </a>
+                        </div>
+                    </div>
+                `;
+                container.innerHTML += card;
+            });
+        }
+
+        // Handle Enter key in search box
+        document.getElementById('searchInput').addEventListener('keyup', function(event) {
+            if (event.key === 'Enter') {
+                searchSuppliers();
+            }
+        });
+
+        // Display initial results on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            displayResults(fallbackSuppliers);
+        });
+    </script>
+</body>
+</html>
